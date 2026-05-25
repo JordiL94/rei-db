@@ -32,24 +32,22 @@ export function TranslationBubble({ data, globalShow, onOpenDrawer }: Translatio
     setPrevGlobalShow(globalShow);
   }
 
-  // Calculate strict dimensions from Gemini's coordinates
   const top = `${ymin / 10}%`;
   const left = `${xmin / 10}%`;
-  // Add 1.5rem (24px) to the width to compensate for the internal left/right padding
   const boxWidth = `calc(${(xmax - xmin) / 10}% + 1.5rem)`;
-  const boxHeight = `${(ymax - ymin) / 10}%`; // Used just for the invisible hitbox
+  const boxHeight = `${(ymax - ymin) / 10}%`;
 
   return (
     <div
-      // NEW: Added negative margins to pull the box left and up, perfectly aligning the text
       className="group absolute z-30 -mt-0.5 -ml-2 hover:z-50 sm:-mt-1 sm:-ml-3"
       style={{ top, left, width: boxWidth, minWidth: '110px' }}
-      onClick={(e) => {
+      // FIX 1: Change onClick to onPointerUp to match the canvas event level
+      onPointerUp={(e) => {
         e.stopPropagation();
         setIsVisible(!isVisible);
       }}
     >
-      {/* Invisible Hitbox: Maintains the exact height of the original Japanese text so you can hover/tap it easily when hidden */}
+      {/* Invisible Hitbox */}
       {!isVisible && (
         <div
           className="absolute top-0 left-0 w-full cursor-pointer rounded-md border-2 border-transparent transition-colors group-hover:border-[var(--accent-primary)]/50"
@@ -71,7 +69,8 @@ export function TranslationBubble({ data, globalShow, onOpenDrawer }: Translatio
 
         {/* The Info Icon (Deep Dive Trigger) */}
         <button
-          onClick={(e) => {
+          // FIX 2: Change onClick to onPointerUp to cleanly capture and stop the propagation chain
+          onPointerUp={(e) => {
             e.stopPropagation();
             onOpenDrawer(data);
           }}

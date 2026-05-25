@@ -10,9 +10,9 @@ interface TranslationDrawerProps {
 }
 
 export function TranslationDrawer({ isOpen, data, onClose }: TranslationDrawerProps) {
-  // Prevent scrolling on the main body when drawer is open on mobile
+  // Update to 1024 (lg breakpoint) so iPad prevents scrolling when drawer is open
   useEffect(() => {
-    if (isOpen && window.innerWidth < 768) {
+    if (isOpen && window.innerWidth < 1024) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -24,17 +24,21 @@ export function TranslationDrawer({ isOpen, data, onClose }: TranslationDrawerPr
 
   return (
     <>
-      {/* Dark overlay backdrop (Visible only on mobile/iPad to focus attention) */}
+      {/* Update md:hidden to lg:hidden */}
       <div
-        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity md:hidden ${
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity lg:hidden ${
           isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
       />
 
-      {/* The Drawer Panel */}
+      {/* Bump all md: prefixes to lg: prefixes */}
       <div
-        className={`/* Mobile/iPad: Bottom Sheet */ /* PC Desktop: Right Sidebar */ fixed right-0 bottom-0 left-0 z-50 flex h-[60vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-900 shadow-2xl transition-transform duration-300 ease-out md:top-0 md:right-0 md:bottom-0 md:left-auto md:h-full md:w-96 md:rounded-none md:border-l ${isOpen ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-x-full'}`}
+        className={`/* Mobile/iPad: Bottom Sheet */ /* PC Desktop: Right Sidebar */ /* --- THE ANIMATION FIX --- */ fixed right-0 bottom-0 left-0 z-50 flex h-[60vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-900 shadow-2xl transition-transform duration-300 ease-out lg:top-0 lg:right-0 lg:bottom-0 lg:left-auto lg:h-full lg:w-96 lg:rounded-none lg:border-l ${
+          isOpen
+            ? 'translate-x-0 translate-y-0'
+            : 'translate-x-0 translate-y-full lg:translate-x-full lg:translate-y-0'
+        } `}
       >
         {/* Header & Close Button */}
         <div className="flex items-center justify-between border-b border-zinc-800 p-4">

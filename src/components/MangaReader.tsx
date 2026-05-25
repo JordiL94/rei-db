@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TranslationBubble, TranslationData } from '@/components/TranslationBubble';
 import { TranslationDrawer } from '@/components/TranslationDrawer';
 import { TranslationControls } from '@/components/TranslationControls';
@@ -39,6 +39,8 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
   const [showAllTranslations, setShowAllTranslations] = useState(false);
   const [activeDrawerItem, setActiveDrawerItem] = useState<TranslationData | null>(null);
 
+  const [autoMode, setAutoMode] = useState(false);
+
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const MIN_SWIPE_DISTANCE = 50;
@@ -55,18 +57,18 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
   const leftPage = readingDirection === 'rtl' ? secondPage : firstPage;
   const rightPage = readingDirection === 'rtl' ? firstPage : secondPage;
 
-  // --- TanStack Query Subscriptions ---
-  // These hooks subscribe to the cache for the specific page IDs currently on screen.
+  const queryClient = useQueryClient();
+
   const firstPageQuery = useQuery({
     queryKey: ['translation', firstPage.id],
     queryFn: () => fetchTranslation(firstPage.id),
-    enabled: false, // Do not run automatically on render
+    enabled: autoMode, // Do not run automatically on render
   });
 
   const secondPageQuery = useQuery({
     queryKey: ['translation', secondPage?.id],
     queryFn: () => fetchTranslation(secondPage!.id),
-    enabled: false, // Do not run automatically on render
+    enabled: autoMode && !!secondPage, // Do not run automatically on render
   });
 
   // Derived queries based on layout direction (fixes the double-page mapping bug!)
@@ -143,7 +145,21 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
     touchEndX.current = null;
   };
 
-  const handleCanvasClick = (e: React.MouseEvent) => {
+  const handleCanvasPointerUp = (e: React.PointerEvent) => {
+    // 1. DRAWER OVERRIDE: If the Analysis Payload is open, ANY click outside
+    // simply closes the drawer without turning the page.
+    if (activeDrawerItem !== null) {
+      setActiveDrawerItem(null);
+      return;
+    }
+
+    // 2. HARDWARE CHECK: If the interaction came from an iPad/Mobile touch screen,
+    // completely ignore it. Touch users MUST swipe to navigate.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      return;
+    }
+
+    // 3. PC MOUSE CLICK NAVIGATION
     const screenWidth = window.innerWidth;
     const clickX = e.clientX;
     if (clickX < screenWidth / 2) {
@@ -154,6 +170,21 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
   };
 
   const handleImageLoad = (id: string) => setLoadedImages((prev) => new Set(prev).add(id));
+
+  // --- Background Translation Pre-fetcher ---
+  useEffect(() => {
+    if (!autoMode) return;
+
+    // Silently queue up the next 3 pages in the background
+    pagesToPreload.forEach((page) => {
+      queryClient
+        .prefetchQuery({
+          queryKey: ['translation', page.id],
+          queryFn: () => fetchTranslation(page.id),
+        })
+        .catch();
+    });
+  }, [currentIndex, autoMode, pagesToPreload, queryClient]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-black text-white select-none">
@@ -188,6 +219,24 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex rounded-lg bg-zinc-800 p-1 text-xs font-medium">
+            <button
+              onClick={() => setAutoMode(false)}
+              className={`rounded-md px-3 py-1.5 transition-all ${!autoMode ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+            >
+              Manual
+            </button>
+            <button
+              onClick={() => {
+                setAutoMode(true);
+                setShowAllTranslations(true); // Ensure bubbles are visible when switching to auto!
+              }}
+              className={`flex items-center gap-1 rounded-md px-3 py-1.5 transition-all ${autoMode ? 'bg-[var(--accent-primary)] text-white shadow-[0_0_10px_rgba(var(--accent-primary-rgb),0.5)]' : 'text-zinc-400 hover:text-white'}`}
+            >
+              Auto <span className="animate-pulse">✧</span>
+            </button>
+          </div>
+
           <div className="hidden rounded-lg bg-zinc-800 p-1 text-xs font-medium md:flex">
             <button
               onClick={() => setReadingDirection('ltr')}
@@ -224,12 +273,10 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        onClick={handleCanvasClick}
+        onPointerUp={handleCanvasPointerUp}
       >
         <div className="flex h-full w-full items-center justify-center">
-          {/* --- SINGLE PAGE LAYOUT --- */}
           {viewMode === 'single' ? (
-            // Removed all padding classes here
             <div className="relative flex h-full w-full items-center justify-center">
               <div className="relative h-fit w-fit max-w-full">
                 {!loadedImages.has(firstPage.id) && (
@@ -242,7 +289,6 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                   src={`/api/image/${firstPage.id}`}
                   alt={firstPage.name}
                   onLoad={() => handleImageLoad(firstPage.id)}
-                  // Perfect math: 100vh - (Header 64px + Footer 56px) = 120px
                   className={`block h-auto max-h-[calc(100vh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(firstPage.id) ? 'opacity-0' : 'opacity-100'}`}
                 />
                 {firstPageQuery.data?.map((trans, i) => (
@@ -256,13 +302,9 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
               </div>
             </div>
           ) : (
-            /* --- DOUBLE PAGE LAYOUT --- */
             <>
-              {/* Left Side */}
               {leftPage && (
-                // Removed padding, strictly justify-end to push to the center line
                 <div className="flex h-full w-1/2 items-center justify-end">
-                  {/* Removed shadow-2xl to prevent dark borders in the center spread */}
                   <div className="relative h-fit w-fit max-w-full">
                     {!loadedImages.has(leftPage.id) && (
                       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
@@ -288,11 +330,8 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                 </div>
               )}
 
-              {/* Right Side */}
               {rightPage && (
-                // Removed padding, strictly justify-start to push to the center line
                 <div className="flex h-full w-1/2 items-center justify-start">
-                  {/* Removed shadow-2xl */}
                   <div className="relative h-fit w-fit max-w-full">
                     {!loadedImages.has(rightPage.id) && (
                       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
