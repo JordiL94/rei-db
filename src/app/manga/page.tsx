@@ -17,7 +17,7 @@ export default async function MangaLibrary() {
   // Fetch the data directly from Google Drive
   const drive = getDriveClient(session.accessToken);
   const rootId = await findOrCreateFolder(drive, 'MangaHub_Root');
-  const baseSeriesList = await listFolders(drive, rootId);
+  const baseSeriesList = await listFolders(drive, rootId as string);
 
   // Fetch the cover image ID for every series simultaneously
   const seriesList = await Promise.all(

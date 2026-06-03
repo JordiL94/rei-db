@@ -33,7 +33,7 @@ export default async function MangaDetailsPage({ params }: { params: Promise<{ i
         </Link>
 
         {/* Delete Entire Series Button */}
-        <ActionMenu targetId={seriesId} targetName={seriesMeta.name!} isSeries={true} />
+        <ActionMenu targetId={seriesId} targetName={seriesMeta?.name as string} isSeries={true} />
       </nav>
 
       {/* 2. The Hero Banner */}
@@ -54,7 +54,7 @@ export default async function MangaDetailsPage({ params }: { params: Promise<{ i
         <div className="relative z-10 flex w-full items-end justify-between">
           <div>
             <h1 className="text-4xl font-black tracking-tight text-[var(--text-primary)]">
-              {seriesMeta.name}
+              {seriesMeta?.name as string}
             </h1>
             <p className="mt-2 font-mono text-[var(--text-secondary)]">
               {volumes.length} Volumes Detected

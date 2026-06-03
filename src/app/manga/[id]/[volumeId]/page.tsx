@@ -33,5 +33,11 @@ export default async function VolumeReaderPage({
     name: img.name!,
   }));
 
-  return <MangaReader pages={pages} volumeName={volumeMeta.name!} backUrl={`/manga/${seriesId}`} />;
+  return (
+    <MangaReader
+      pages={pages}
+      volumeName={volumeMeta?.name as string}
+      backUrl={`/manga/${seriesId}`}
+    />
+  );
 }
