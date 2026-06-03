@@ -175,7 +175,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
   }, [currentIndex, autoMode, pagesToPreload, queryClient]);
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-black text-white select-none">
+    <div className="fixed inset-0 z-40 flex h-[100dvh] flex-col bg-black text-white select-none">
       <div className="hidden">
         {pagesToPreload.map((page) => (
           <img key={`preload-${page.id}`} src={`/api/image/${page.id}`} alt="preload" />
@@ -293,7 +293,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                   src={`/api/image/${firstPage.id}`}
                   alt={firstPage.name}
                   onLoad={() => handleImageLoad(firstPage.id)}
-                  className={`block h-auto max-h-[calc(100vh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(firstPage.id) ? 'opacity-0' : 'opacity-100'}`}
+                  className={`block h-auto max-h-[calc(100dvh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(firstPage.id) ? 'opacity-0' : 'opacity-100'}`}
                 />
                 {/* BUBBLE LAYER (z-30) */}
                 {firstPageQuery.data?.map((trans, i) => (
@@ -322,7 +322,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                       src={`/api/image/${leftPage.id}`}
                       alt={leftPage.name}
                       onLoad={() => handleImageLoad(leftPage.id)}
-                      className={`block h-auto max-h-[calc(100vh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(leftPage.id) ? 'opacity-0' : 'opacity-100'}`}
+                      className={`block h-auto max-h-[calc(100dvh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(leftPage.id) ? 'opacity-0' : 'opacity-100'}`}
                     />
                     {leftPageQuery.data?.map((trans, i) => (
                       <TranslationBubble
@@ -350,7 +350,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                       src={`/api/image/${rightPage.id}`}
                       alt={rightPage.name}
                       onLoad={() => handleImageLoad(rightPage.id)}
-                      className={`block h-auto max-h-[calc(100vh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(rightPage.id) ? 'opacity-0' : 'opacity-100'}`}
+                      className={`block h-auto max-h-[calc(100dvh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(rightPage.id) ? 'opacity-0' : 'opacity-100'}`}
                     />
                     {rightPageQuery.data?.map((trans, i) => (
                       <TranslationBubble
