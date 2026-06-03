@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { getDriveClient } from '@/lib/drive';
+import {
+  getDriveClient,
+  findFileByName,
+  downloadJsonFile,
+  downloadImageForGemini,
+  getFileParentId,
+  uploadJsonFile,
+} from '@/lib/drive';
 import { GoogleGenAI } from '@google/genai';
-import { Readable } from 'stream';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -27,23 +33,15 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 1. CHECK GOOGLE DRIVE CACHE
     // ==========================================
-    const searchRes = await drive.files.list({
-      q: `name = '${cacheFileName}' and trashed = false`,
-      fields: 'files(id, name)',
-      spaces: 'drive',
-    });
+    const cachedFileId = await findFileByName(drive, cacheFileName);
 
-    const cachedFile = searchRes.data.files?.[0];
+    if (cachedFileId) {
+      const cachedData = await downloadJsonFile(drive, cachedFileId);
 
-    if (cachedFile && cachedFile.id) {
-      console.log(`[MAGI] Cache HIT for ${imageId}`);
-      // Download the JSON from Drive
-      const fileRes = await drive.files.get(
-        { fileId: cachedFile.id, alt: 'media' },
-        { responseType: 'json' }
-      );
-
-      return NextResponse.json({ success: true, data: fileRes.data });
+      if (cachedData) {
+        console.log(`[MAGI] Cache HIT for ${imageId}`);
+        return NextResponse.json({ success: true, data: cachedData });
+      }
     }
 
     // ==========================================
@@ -51,14 +49,12 @@ export async function POST(request: NextRequest) {
     // ==========================================
     console.log(`[MAGI] Cache MISS for ${imageId}. Initiating Gemini Scan...`);
 
-    // Fetch original image to send to Gemini
-    const driveRes = await drive.files.get(
-      { fileId: imageId, alt: 'media' },
-      { responseType: 'arraybuffer' }
-    );
+    const imagePayload = await downloadImageForGemini(drive, imageId);
+    if (!imagePayload) {
+      throw new Error('Failed to download source image from Drive.');
+    }
 
-    const base64Data = Buffer.from(driveRes.data as ArrayBuffer).toString('base64');
-    const mimeType = driveRes.headers['content-type'] || 'image/jpeg';
+    const { base64Data, mimeType } = imagePayload;
 
     const prompt = `You are an expert manga translator and a Japanese linguistics tutor. 
 Your target audience is students who already know fundamental Japanese (JLPT N4 and above).
@@ -86,37 +82,25 @@ Each object in the array must contain exactly these 5 keys:
     // ==========================================
     // 3. SAVE TO GOOGLE DRIVE
     // ==========================================
-    // We need to figure out WHERE to save it.
-    // The cleanest way is to save it in the EXACT SAME FOLDER as the original image.
-    const originalFileMeta = await drive.files.get({
-      fileId: imageId,
-      fields: 'parents',
-    });
-    const parentFolderId = originalFileMeta.data.parents?.[0];
+    const parentFolderId = await getFileParentId(drive, imageId);
 
-    const fileMetadata = {
-      name: cacheFileName,
-      mimeType: 'application/json',
-      parents: parentFolderId ? [parentFolderId] : undefined,
-    };
-
-    const media = {
-      mimeType: 'application/json',
-      body: Readable.from([JSON.stringify(parsedData)]), // Convert JSON to stream for Drive API
-    };
-
-    await drive.files.create({
-      requestBody: fileMetadata,
-      media: media,
-      fields: 'id',
-    });
-
+    // We pass undefined if parentFolderId is null, our helper handles it safely
+    await uploadJsonFile(drive, cacheFileName, parsedData, parentFolderId || undefined);
     console.log(`[MAGI] Payload saved to Drive: ${cacheFileName}`);
 
     return NextResponse.json({ success: true, data: parsedData });
   } catch (error) {
     console.error('Translation Engine Error:', error);
-    // Future step: Add specific 429 / 503 error detection here for the frontend toast
+
+    // Retained 401 Interceptor from previous context
+    if (
+      error.code === 401 ||
+      error.status === 401 ||
+      error.message?.includes('Invalid Credentials')
+    ) {
+      return NextResponse.json({ error: 'Google API Unauthorized' }, { status: 401 });
+    }
+
     return NextResponse.json({ error: 'Failed to process translation.' }, { status: 500 });
   }
 }

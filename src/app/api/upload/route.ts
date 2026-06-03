@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { getDriveClient, findOrCreateFolder, uploadImageBuffer } from '@/lib/drive';
+import {
+  getDriveClient,
+  findOrCreateFolder,
+  uploadImageBuffer,
+  checkIfFolderExists,
+} from '@/lib/drive';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,18 +26,19 @@ export async function POST(request: NextRequest) {
     }
 
     const drive = getDriveClient(session.accessToken);
+
+    // Create or find root. If it returns null, Drive API failed, abort the upload.
     const rootId = await findOrCreateFolder(drive, 'MangaHub_Root');
+    if (!rootId) throw new Error('Failed to resolve Root folder');
+
     const seriesId = await findOrCreateFolder(drive, seriesName, rootId);
+    if (!seriesId) throw new Error('Failed to resolve Series folder');
 
     // THE CIRCUIT BREAKER: Only check on the very first chunk of a volume
     if (isFirstChunk) {
-      const existingVolumeRes = await drive.files.list({
-        // Search specifically for this volume folder inside the series folder
-        q: `mimeType='application/vnd.google-apps.folder' and name='${volumeName.replace(/'/g, "\\'")}' and '${seriesId}' in parents and trashed=false`,
-        fields: 'files(id)',
-      });
+      const volumeExists = await checkIfFolderExists(drive, volumeName, seriesId);
 
-      if (existingVolumeRes.data.files && existingVolumeRes.data.files.length > 0) {
+      if (volumeExists) {
         // Boom. Volume exists. Tell the frontend to abort sending any more chunks for this volume.
         return NextResponse.json({
           skipVolume: true,
@@ -43,8 +49,9 @@ export async function POST(request: NextRequest) {
 
     // If we reach here, either the volume didn't exist, OR this is chunk 2, 3, 4, etc.
     const volumeId = await findOrCreateFolder(drive, volumeName, seriesId);
+    if (!volumeId) throw new Error('Failed to resolve Volume folder');
 
-    // Upload the Images (Blindly and fast, because we know the folder is clean)
+    // Upload the Images
     const uploadedIds: string[] = [];
     const CONCURRENCY_LIMIT = 5;
 
@@ -54,11 +61,13 @@ export async function POST(request: NextRequest) {
       const uploadPromises = batch.map(async (file) => {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
+        // uploadImageBuffer now returns string | null, we filter out nulls below
         return uploadImageBuffer(drive, file.name, buffer, volumeId);
       });
 
       const batchResults = await Promise.all(uploadPromises);
-      uploadedIds.push(...batchResults);
+      // Filter out any nulls if an individual image failed
+      uploadedIds.push(...(batchResults.filter(Boolean) as string[]));
     }
 
     return NextResponse.json({
