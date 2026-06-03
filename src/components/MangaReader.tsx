@@ -42,7 +42,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
   const [autoMode, setAutoMode] = useState(false);
 
   const touchStartX = useRef<number | null>(null);
-  const touchEndX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null); // NEW: Track Y axis
   const MIN_SWIPE_DISTANCE = 50;
 
   // --- Preloader Logic ---
@@ -130,42 +130,30 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
 
   const onTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
+    touchStartY.current = e.targetTouches[0].clientY;
   };
-  const onTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX;
-  };
-  const onTouchEnd = () => {
-    if (!touchStartX.current || !touchEndX.current) return;
-    const distance = touchStartX.current - touchEndX.current;
-    if (distance > MIN_SWIPE_DISTANCE)
-      return readingDirection === 'rtl' ? handlePrev() : handleNext();
-    if (distance < -MIN_SWIPE_DISTANCE)
-      return readingDirection === 'rtl' ? handleNext() : handlePrev();
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+
+    const currentX = e.changedTouches[0].clientX;
+    const currentY = e.changedTouches[0].clientY;
+
+    const dragDistanceX = touchStartX.current - currentX; // Positive = swiped left
+    const dragDistanceY = touchStartY.current - currentY;
+
+    // Reset touch refs immediately
     touchStartX.current = null;
-    touchEndX.current = null;
-  };
+    touchStartY.current = null;
 
-  const handleCanvasPointerUp = (e: React.PointerEvent) => {
-    // 1. DRAWER OVERRIDE: If the Analysis Payload is open, ANY click outside
-    // simply closes the drawer without turning the page.
-    if (activeDrawerItem !== null) {
-      setActiveDrawerItem(null);
-      return;
-    }
+    // THE ANTI-JITTER: Ignore diagonal or vertical swipes
+    if (Math.abs(dragDistanceY) > Math.abs(dragDistanceX)) return;
 
-    // 2. HARDWARE CHECK: If the interaction came from an iPad/Mobile touch screen,
-    // completely ignore it. Touch users MUST swipe to navigate.
-    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-      return;
-    }
-
-    // 3. PC MOUSE CLICK NAVIGATION
-    const screenWidth = window.innerWidth;
-    const clickX = e.clientX;
-    if (clickX < screenWidth / 2) {
-      return readingDirection === 'rtl' ? handleNext() : handlePrev();
-    } else {
-      return readingDirection === 'rtl' ? handlePrev() : handleNext();
+    // Trigger Navigation
+    if (dragDistanceX > MIN_SWIPE_DISTANCE) {
+      readingDirection === 'rtl' ? handlePrev() : handleNext();
+    } else if (dragDistanceX < -MIN_SWIPE_DISTANCE) {
+      readingDirection === 'rtl' ? handleNext() : handlePrev();
     }
   };
 
@@ -269,15 +257,31 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
       </header>
 
       <main
-        className="relative flex flex-1 cursor-pointer items-center justify-center overflow-hidden bg-zinc-950 px-2 py-0 md:px-6"
+        className="relative flex flex-1 touch-none items-center justify-center overflow-hidden bg-zinc-950 px-2 py-0 select-none md:px-6"
         onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        onPointerUp={handleCanvasPointerUp}
       >
-        <div className="flex h-full w-full items-center justify-center">
+        {/* --- THE PC CLICK ZONES (Completely invisible on iPad/Mobile) --- */}
+        <div
+          className="absolute top-0 bottom-0 left-0 z-20 w-1/2 cursor-pointer [@media(pointer:coarse)]:hidden"
+          onClick={() => {
+            // If drawer is open, dismiss it. Otherwise, navigate.
+            if (activeDrawerItem) return setActiveDrawerItem(null);
+            readingDirection === 'rtl' ? handleNext() : handlePrev();
+          }}
+        />
+        <div
+          className="absolute top-0 right-0 bottom-0 z-20 w-1/2 cursor-pointer [@media(pointer:coarse)]:hidden"
+          onClick={() => {
+            // If drawer is open, dismiss it. Otherwise, navigate.
+            if (activeDrawerItem) return setActiveDrawerItem(null);
+            readingDirection === 'rtl' ? handlePrev() : handleNext();
+          }}
+        />
+
+        <div className="pointer-events-none flex h-full w-full items-center justify-center">
           {viewMode === 'single' ? (
-            <div className="relative flex h-full w-full items-center justify-center">
+            <div className="pointer-events-auto relative flex h-full w-full items-center justify-center">
               <div className="relative h-fit w-fit max-w-full">
                 {!loadedImages.has(firstPage.id) && (
                   <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
@@ -291,6 +295,7 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                   onLoad={() => handleImageLoad(firstPage.id)}
                   className={`block h-auto max-h-[calc(100vh-120px)] w-auto max-w-full transition-opacity duration-300 ${!loadedImages.has(firstPage.id) ? 'opacity-0' : 'opacity-100'}`}
                 />
+                {/* BUBBLE LAYER (z-30) */}
                 {firstPageQuery.data?.map((trans, i) => (
                   <TranslationBubble
                     key={i}
@@ -303,8 +308,9 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
             </div>
           ) : (
             <>
+              {/* Left Side Double Page */}
               {leftPage && (
-                <div className="flex h-full w-1/2 items-center justify-end">
+                <div className="pointer-events-auto flex h-full w-1/2 items-center justify-end">
                   <div className="relative h-fit w-fit max-w-full">
                     {!loadedImages.has(leftPage.id) && (
                       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
@@ -330,8 +336,9 @@ export function MangaReader({ pages, volumeName, backUrl }: MangaReaderProps) {
                 </div>
               )}
 
+              {/* Right Side Double Page */}
               {rightPage && (
-                <div className="flex h-full w-1/2 items-center justify-start">
+                <div className="pointer-events-auto flex h-full w-1/2 items-center justify-start">
                   <div className="relative h-fit w-fit max-w-full">
                     {!loadedImages.has(rightPage.id) && (
                       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">

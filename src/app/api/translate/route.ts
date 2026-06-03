@@ -89,7 +89,13 @@ Each object in the array must contain exactly these 5 keys:
     console.log(`[MAGI] Payload saved to Drive: ${cacheFileName}`);
 
     return NextResponse.json({ success: true, data: parsedData });
-  } catch (error) {
+  } catch (e) {
+    const error = e as {
+      code: number;
+      status: number;
+      message: string;
+    };
+
     console.error('Translation Engine Error:', error);
 
     // Retained 401 Interceptor from previous context
